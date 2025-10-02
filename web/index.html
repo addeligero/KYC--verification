@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>KYC MVP Demo</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        max-width: 900px;
+        margin: 2rem auto;
+        padding: 0 1rem;
+      }
+      .card {
+        border: 1px solid #ddd;
+        border-radius: 12px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+      }
+      .row {
+        display: flex;
+        gap: 1rem;
+        flex-wrap: wrap;
+      }
+      .row > div {
+        flex: 1 1 280px;
+      }
+      pre {
+        background: #f6f8fa;
+        padding: 1rem;
+        overflow: auto;
+        border-radius: 8px;
+        white-space: pre-wrap;
+      }
+      button {
+        padding: 0.6rem 1rem;
+      }
+      label {
+        display: block;
+        margin: 0.3rem 0;
+      }
+      input[type="file"] {
+        width: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>KYC MVP Demo</h1>
+    <p>
+      Upload an ID (front) and a selfie to run the free KYC pipeline. This is a
+      demo and not compliance-grade.
+    </p>
+
+    <div class="card">
+      <form id="kyc-form">
+        <div class="row">
+          <div>
+            <label>ID Front (required)</label>
+            <input
+              type="file"
+              id="id_front"
+              name="id_front"
+              accept="image/*"
+              required
+            />
+          </div>
+          <div>
+            <label>ID Back (optional)</label>
+            <input type="file" id="id_back" name="id_back" accept="image/*" />
+          </div>
+          <div>
+            <label>Selfie (required)</label>
+            <input
+              type="file"
+              id="selfie"
+              name="selfie"
+              accept="image/*"
+              required
+            />
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label>Full Name (optional)</label>
+            <input
+              type="text"
+              id="full_name"
+              name="full_name"
+              placeholder="Jane Doe"
+            />
+          </div>
+          <div>
+            <label>Date of Birth (YYYY-MM-DD, optional)</label>
+            <input type="text" id="dob" name="dob" placeholder="1990-01-01" />
+          </div>
+        </div>
+        <p><button type="submit">Run KYC</button></p>
+      </form>
+    </div>
+
+    <div class="card">
+      <h3>Result</h3>
+      <pre id="result"></pre>
+    </div>
+
+    <script>
+      const form = document.getElementById("kyc-form");
+      const out = document.getElementById("result");
+
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        out.textContent = "Running...";
+        const fd = new FormData(form);
+        try {
+          const res = await fetch("/api/kyc/verify", {
+            method: "POST",
+            body: fd,
+          });
+          const ct = res.headers.get("content-type") || "";
+          if (!res.ok) {
+            const text = ct.includes("application/json")
+              ? JSON.stringify(await res.json(), null, 2)
+              : await res.text();
+            out.textContent = `HTTP ${res.status} ${res.statusText}\n${text}`;
+            return;
+          }
+          const data = ct.includes("application/json")
+            ? await res.json()
+            : await res.text();
+          out.textContent =
+            typeof data === "string" ? data : JSON.stringify(data, null, 2);
+        } catch (err) {
+          out.textContent =
+            "Network or parsing error: " +
+            (err && err.message ? err.message : err);
+        }
+      });
+    </script>
+  </body>
+</html>
