@@ -33,7 +33,9 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
-Open http://localhost:8000/web
+Open http://localhost:8000/web. The demo now captures selfies directly from your
+camera (via `getUserMedia`). Grant browser permissions, start the camera, and
+capture a live frame before submitting the form.
 
 ## Models
 

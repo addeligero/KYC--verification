@@ -42,13 +42,32 @@
       input[type="file"] {
         width: 100%;
       }
+      video,
+      canvas,
+      img.preview {
+        width: 100%;
+        max-width: 320px;
+        border-radius: 12px;
+        border: 1px solid #ddd;
+        background: #000;
+      }
+      .selfie-status {
+        font-size: 0.9rem;
+        color: #555;
+      }
+      .selfie-actions {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        margin-top: 0.5rem;
+      }
     </style>
   </head>
   <body>
     <h1>KYC MVP Demo</h1>
     <p>
-      Upload an ID (front) and a selfie to run the free KYC pipeline. This is a
-      demo and not compliance-grade.
+      Upload an ID (front) and capture a live selfie to run the free KYC
+      pipeline. This is a demo and not compliance-grade.
     </p>
 
     <div class="card">
@@ -69,14 +88,28 @@
             <input type="file" id="id_back" name="id_back" accept="image/*" />
           </div>
           <div>
-            <label>Selfie (required)</label>
-            <input
-              type="file"
-              id="selfie"
-              name="selfie"
-              accept="image/*"
-              required
-            />
+            <label>Live Selfie Capture (required)</label>
+            <div>
+              <video id="selfie-video" playsinline autoplay muted></video>
+              <img
+                id="selfie-preview"
+                class="preview"
+                alt="Captured selfie preview"
+                style="display: none; margin-top: 0.5rem;"
+              />
+              <div class="selfie-actions">
+                <button type="button" id="start-camera">Start Camera</button>
+                <button type="button" id="capture-selfie" disabled>
+                  Capture Selfie
+                </button>
+                <button type="button" id="retake-selfie" disabled>
+                  Retake
+                </button>
+              </div>
+              <p class="selfie-status" id="selfie-status">
+                Camera idle. Start the camera to capture a live selfie.
+              </p>
+            </div>
           </div>
         </div>
         <div class="row">
@@ -106,11 +139,107 @@
     <script>
       const form = document.getElementById("kyc-form");
       const out = document.getElementById("result");
+      const video = document.getElementById("selfie-video");
+      const preview = document.getElementById("selfie-preview");
+      const startBtn = document.getElementById("start-camera");
+      const captureBtn = document.getElementById("capture-selfie");
+      const retakeBtn = document.getElementById("retake-selfie");
+      const statusEl = document.getElementById("selfie-status");
+
+      let stream = null;
+      let capturedBlob = null;
+
+      async function startCamera() {
+        if (stream) {
+          statusEl.textContent = "Camera already running.";
+          return;
+        }
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: "user", width: { ideal: 640 } },
+            audio: false,
+          });
+          video.srcObject = stream;
+          captureBtn.disabled = false;
+          retakeBtn.disabled = true;
+          preview.style.display = "none";
+          statusEl.textContent = "Camera active. Capture when ready.";
+        } catch (err) {
+          statusEl.textContent =
+            "Unable to access camera: " +
+            (err && err.message ? err.message : err);
+        }
+      }
+
+      function stopCamera() {
+        if (!stream) return;
+        stream.getTracks().forEach((track) => track.stop());
+        stream = null;
+        video.srcObject = null;
+        captureBtn.disabled = true;
+      }
+
+      async function captureSelfie() {
+        if (!stream) {
+          statusEl.textContent = "Camera not running. Start camera first.";
+          return;
+        }
+        const track = stream.getVideoTracks()[0];
+        const settings = track.getSettings();
+        const canvas = document.createElement("canvas");
+        canvas.width = settings.width || video.videoWidth || 640;
+        canvas.height = settings.height || video.videoHeight || 480;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        await new Promise((resolve) => {
+          canvas.toBlob(
+            (blob) => {
+              if (!blob) {
+                statusEl.textContent = "Failed to capture selfie. Try again.";
+                return resolve();
+              }
+              capturedBlob = blob;
+              preview.src = URL.createObjectURL(blob);
+              preview.style.display = "block";
+              statusEl.textContent = "Selfie captured. Submit the form or retake.";
+              retakeBtn.disabled = false;
+              resolve();
+            },
+            "image/jpeg",
+            0.95
+          );
+        });
+      }
+
+      function retakeSelfie() {
+        capturedBlob = null;
+        preview.style.display = "none";
+        statusEl.textContent = "Capture another selfie when ready.";
+        retakeBtn.disabled = true;
+      }
+
+      startBtn.addEventListener("click", startCamera);
+      captureBtn.addEventListener("click", captureSelfie);
+      retakeBtn.addEventListener("click", retakeSelfie);
+
+      window.addEventListener("beforeunload", () => {
+        stopCamera();
+      });
 
       form.addEventListener("submit", async (e) => {
         e.preventDefault();
+        if (!capturedBlob) {
+          statusEl.textContent = "Capture a selfie before submitting.";
+          return;
+        }
         out.textContent = "Running...";
         const fd = new FormData(form);
+        // Remove any stale selfie value and append the live capture
+        fd.delete("selfie");
+        const selfieFile = new File([capturedBlob], "selfie.jpg", {
+          type: "image/jpeg",
+        });
+        fd.append("selfie", selfieFile);
         try {
           const res = await fetch("/api/kyc/verify", {
             method: "POST",
